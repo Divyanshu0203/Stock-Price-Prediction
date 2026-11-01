@@ -1,0 +1,56 @@
+[
+  {
+    "dataset": "AMAZON",
+    "n_test_days": 892,
+    "lstm_price": {
+      "rmse": 9.931247585694159,
+      "mae": 6.769311321293617
+    },
+    "arima_price": {
+      "rmse": 9.911253088880526,
+      "mae": 6.745446979820243
+    },
+    "naive_price": {
+      "rmse": 9.92814006410092,
+      "mae": 6.76534630044843
+    },
+    "lstm_vs_arima_rmse_improvement_pct": -0.20173530666939005,
+    "lstm_vs_naive_rmse_improvement_pct": -0.03130013852721663,
+    "regressor_direction_acc": 0.5280269058295964,
+    "arima_direction_acc": 0.5426008968609866,
+    "classifier_accuracy": 0.46860986547085204,
+    "majority_class_baseline_accuracy": 0.5426008968609866,
+    "classifier_share_predicted_up": 0.27802690582959644,
+    "share_up_days_in_test": 0.5426008968609866,
+    "backtest": {
+      "LSTM classifier": {
+        "total_return": 0.08005998289356331,
+        "cagr": 0.021996479510564937,
+        "sharpe": 0.22278660650444518,
+        "max_drawdown": -0.18809820449941694,
+        "n_trades": 54
+      },
+      "LSTM regressor": {
+        "total_return": 1.6050778792870761,
+        "cagr": 0.31061161527514014,
+        "sharpe": 1.1060112846092627,
+        "max_drawdown": -0.24725549421366033,
+        "n_trades": 25
+      },
+      "ARIMA": {
+        "total_return": 1.921175749464966,
+        "cagr": 0.3537088424127024,
+        "sharpe": 1.185291683409588,
+        "max_drawdown": -0.3053445723230007,
+        "n_trades": 1
+      },
+      "Buy & hold": {
+        "total_return": 1.921175749464966,
+        "cagr": 0.3537088424127024,
+        "sharpe": 1.185291683409588,
+        "max_drawdown": -0.3053445723230007,
+        "n_trades": 1
+      }
+    }
+  }
+]
