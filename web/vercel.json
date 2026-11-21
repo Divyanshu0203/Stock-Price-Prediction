@@ -1,7 +1,9 @@
+
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "functions": {
-    "api/predict.py": {
-      "includeFiles": "models/**"
+    "web/api/predict.py": {
+      "includeFiles": "web/api/models/**"
     }
   }
 }
