@@ -1,9 +1,21 @@
-
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "functions": {
-    "web/api/predict.py": {
-      "includeFiles": "web/api/models/**"
+  "services": {
+    "app": {
+      "root": ".",
+      "runtime": "python"
+    },
+    "web": {
+      "root": "web",
+      "runtime": "python"
     }
-  }
+  },
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": {
+        "service": "app"
+      }
+    }
+  ]
 }
