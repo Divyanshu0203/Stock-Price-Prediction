@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stock Forecast Demo</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #151a22; --muted: #5b6573; --line: #dfe3e9;
+    --accent: #2457d6; --up: #11804d; --down: #c0352b; --warn-bg: #fff6e0; --warn-text: #6b4a00;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e1117; --card: #171c25; --text: #e8ecf2; --muted: #98a2b3; --line: #2a3240;
+      --accent: #6b9bff; --up: #3ecf8e; --down: #ff7a70; --warn-bg: #2b2412; --warn-text: #f0d48a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+  .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  label { color: var(--muted); font-size: .9rem; }
+  select { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line);
+           background: var(--card); color: var(--text); min-width: 160px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+  .stat .k { color: var(--muted); font-size: .85rem; }
+  .stat .v { font-size: 1.5rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .up { color: var(--up); } .down { color: var(--down); }
+  .chart { width: 100%; height: auto; display: block; }
+  .chart text { fill: var(--muted); font-size: 11px; }
+  .verdict { background: var(--warn-bg); color: var(--warn-text); border-radius: 8px; padding: 10px 12px; margin: 0 0 12px; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  td { padding: 6px 0; border-bottom: 1px solid var(--line); }
+  td:last-child { text-align: right; }
+  h2 { font-size: 1.05rem; margin: 0 0 10px; }
+  .muted { color: var(--muted); font-size: .85rem; }
+  #error { color: var(--down); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Stock Forecast Demo</h1>
+  <p class="sub">Next-day close predicted by an LSTM, shown next to the plain &ldquo;tomorrow = today&rdquo; baseline and the model's honest track record.</p>
+
+  <div class="card row">
+    <label for="ticker">Stock</label>
+    <select id="ticker" disabled><option>Loading&hellip;</option></select>
+    <span id="status" class="muted" role="status"></span>
+  </div>
+  <p id="error" role="alert" hidden></p>
+
+  <div id="result" hidden>
+    <div class="card stats">
+      <div class="stat"><div class="k">Last close <span id="asof"></span></div><div class="v" id="last"></div></div>
+      <div class="stat"><div class="k">Model's next-day forecast</div><div class="v" id="pred"></div></div>
+      <div class="stat"><div class="k">Forecast change</div><div class="v" id="chg"></div></div>
+    </div>
+
+    <div class="card">
+      <h2>Last 120 trading days and the forecast</h2>
+      <svg id="chart" class="chart" viewBox="0 0 720 260" role="img" aria-label="Price history with next-day forecast"></svg>
+    </div>
+
+    <div class="card">
+      <h2>How good is this model, really?</h2>
+      <p id="verdict" class="verdict"></p>
+      <table id="metrics"></table>
+      <p class="muted" id="modelnote"></p>
+    </div>
+  </div>
+
+  <p class="muted">Educational project, not financial advice. Prices come from Yahoo Finance, are adjusted for splits and dividends, and may be delayed or intraday.</p>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const SVG = "http://www.w3.org/2000/svg";
+
+async function api(query) {
+  const res = await fetch("/api/predict" + query);
+  let body = null;
+  try { body = await res.json(); } catch (e) { /* ignore */ }
+  if (!res.ok) throw new Error((body && body.error) || "Request failed (HTTP " + res.status + ")");
+  return body;
+}
+
+function showError(msg) { const el = $("error"); el.textContent = msg || ""; el.hidden = !msg; }
+const money = (x) => x.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const pct = (x, d = 1) => (x * 100).toFixed(d) + "%";
+
+function el(name, attrs, text) {
+  const e = document.createElementNS(SVG, name);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+let lastChart = null;
+function drawChart(history, predicted) {
+  lastChart = [history, predicted];
+  const svg = $("chart");
+  svg.replaceChildren();
+  const W = Math.max(300, Math.round(svg.getBoundingClientRect().width) || 720);  // match the screen so labels stay readable
+  const H = W < 500 ? 230 : 260, L = 56, R = 16, T = 12, B = 28;
+  svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+  const closes = history.map((p) => p.c);
+  const all = closes.concat([predicted]);
+  let lo = Math.min(...all), hi = Math.max(...all);
+  const pad = (hi - lo) * 0.08 || 1; lo -= pad; hi += pad;
+  const n = history.length;                                   // forecast sits one step to the right
+  const x = (i) => L + (i / n) * (W - L - R);
+  const y = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
+
+  for (let k = 0; k <= 3; k++) {
+    const v = lo + ((hi - lo) * k) / 3;
+    svg.appendChild(el("line", { x1: L, x2: W - R, y1: y(v), y2: y(v), stroke: "var(--line)", "stroke-width": 1 }));
+    svg.appendChild(el("text", { x: L - 6, y: y(v) + 4, "text-anchor": "end" }, money(v)));
+  }
+  svg.appendChild(el("polyline", {
+    points: closes.map((c, i) => x(i).toFixed(1) + "," + y(c).toFixed(1)).join(" "),
+    fill: "none", stroke: "var(--accent)", "stroke-width": 2, "stroke-linejoin": "round",
+  }));
+  const up = predicted >= closes[n - 1];
+  const col = up ? "var(--up)" : "var(--down)";
+  svg.appendChild(el("line", { x1: x(n - 1), y1: y(closes[n - 1]), x2: x(n), y2: y(predicted),
+                               stroke: col, "stroke-width": 2, "stroke-dasharray": "4 3" }));
+  svg.appendChild(el("circle", { cx: x(n), cy: y(predicted), r: 5, fill: col }));
+  svg.appendChild(el("text", { x: L, y: H - 8 }, history[0].d));
+  svg.appendChild(el("text", { x: W - R, y: H - 8, "text-anchor": "end" }, history[n - 1].d + " + 1 day"));
+}
+
+function metricRow(table, label, value) {
+  const tr = document.createElement("tr");
+  const a = document.createElement("td"), b = document.createElement("td");
+  a.textContent = label; b.textContent = value;
+  tr.append(a, b); table.appendChild(tr);
+}
+
+window.addEventListener("resize", () => { if (lastChart) drawChart(lastChart[0], lastChart[1]); });
+
+function render(r) {
+  $("result").hidden = false;   // must be visible before drawing so the chart can measure its width
+  $("asof").textContent = "(" + r.as_of + ")";
+  $("last").textContent = money(r.last_close);
+  $("pred").textContent = money(r.predicted_close);
+  const chg = $("chg");
+  const up = r.predicted_return_pct >= 0;
+  chg.textContent = (up ? "+" : "") + r.predicted_return_pct.toFixed(2) + "%";
+  chg.className = "v " + (up ? "up" : "down");
+  drawChart(r.history, r.predicted_close);
+
+  const m = r.model.metrics || {};
+  const table = $("metrics"); table.replaceChildren();
+  if (m.naive_rmse != null) {
+    const imp = ((m.naive_rmse - m.lstm_rmse) / m.naive_rmse) * 100;
+    $("verdict").textContent = Math.abs(imp) < 1
+      ? "On held-out data this model's price error was within 1% of the naive \u201ctomorrow = today\u201d baseline, so it shows no meaningful edge. Treat the forecast as roughly \u201cabout the same as today\u201d."
+      : imp > 0
+        ? "On held-out data the model's price error was " + imp.toFixed(1) + "% lower than the naive baseline. That is a small sample from one period, so don't over-trust it."
+        : "On held-out data the model's price error was " + Math.abs(imp).toFixed(1) + "% higher than the naive baseline.";
+    metricRow(table, "Held-out days tested", String(m.n_test_days));
+    metricRow(table, "Model error (RMSE)", money(m.lstm_rmse));
+    metricRow(table, "Naive baseline error (RMSE)", money(m.naive_rmse));
+    metricRow(table, "Direction called correctly", pct(m.direction_acc));
+    metricRow(table, "Share of days that were up", pct(m.share_up_days));
+  }
+  $("modelnote").textContent = "Trained on data through " + (r.model.trained_through || "?") +
+    " using the last " + r.model.window + " trading days of " + (r.model.feature_names || []).length + " indicators.";
+  $("result").hidden = false;
+}
+
+async function load(ticker) {
+  showError(""); $("status").textContent = "Fetching latest prices\u2026"; $("result").hidden = true;
+  try { render(await api("?ticker=" + encodeURIComponent(ticker))); }
+  catch (e) { showError(e.message); }
+  finally { $("status").textContent = ""; }
+}
+
+(async function init() {
+  const sel = $("ticker");
+  try {
+    const { models } = await api("");
+    if (!models.length) { sel.replaceChildren(new Option("No models yet", "")); showError("No trained models are deployed yet."); return; }
+    sel.replaceChildren(...models.map((m) => new Option(m.ticker, m.ticker)));
+    sel.disabled = false;
+    sel.addEventListener("change", () => load(sel.value));
+    load(sel.value);
+  } catch (e) { sel.replaceChildren(new Option("Unavailable", "")); showError(e.message); }
+})();
+</script>
+</body>
+</html>

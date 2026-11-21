@@ -65,6 +65,7 @@ def prepare_data(df, window=60, train_frac=0.8):
         "split": split,
         "feature_names": feature_names,
         "return_scaler": return_scaler,
+        "feature_scaler": feature_scaler,
         "X_train": X_train,
         "X_test": X_test,
         "ret_train": ret[tr_idx + 1],
